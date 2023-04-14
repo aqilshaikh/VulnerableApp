@@ -68,3 +68,10 @@ pipeline {
     GITHUB_CREDENTIALS = credentials('github-credentials')
   }
 }
+
+
+
+
+{
+  "exec-opts": ["native.cgroupdriver=cgroupfs"]
+}
