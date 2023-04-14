@@ -1,95 +1,70 @@
+
 pipeline {
-    agent any
-
-    stages {
-        stage('Checkout') {
-            steps {
-                git 'git@github.com:aqilshaikh/VulnerableApp.git'
-            }
-        }
-
-        stage('Build') {
-            steps {
-                sh 'mvn clean package'
-            }
-        }
-
-        stage('Dependency Check') {
-            steps {
-                script {
-                    docker.image('owasp/dependency-check:6.2').inside {
-                        sh 'dependency-check.sh --project "Vulnerable App" --scan ./target --out /reports --format ALL'
-                    }
-                }
-            }
-        }
-
-        stage('Trufflehog') {
-            steps {
-                script {
-                    docker.image('zricethezav/trufflehog:latest').inside {
-                        sh 'trufflehog --entropy=True /workspace --json > /reports/trufflehog_report.json'
-                    }
-                }
-            }
-        }
-
-        stage('Static Application Security Testing (SAST)') {
-            steps {
-                script {
-                    docker.image('spotbugs/spotbugs:latest').inside {
-                        sh 'spotbugs -textui -effort:max -html -output /reports/spotbugs_report.html ./target/VulnerableApp.jar'
-                    }
-                }
-            }
-        }
-        
-        stage('Deploy to Tomcat') {
-            steps {
-                sh 'rm -rf $CATALINA_HOME/webapps/VulnerableApp*'
-                sh 'cp ./target/VulnerableApp.war $CATALINA_HOME/webapps/'
-            }
-        }
-        
-        stage('Container Scanning') {
-            steps {
-                script {
-                    docker.image('goodwithtech/dockle:latest').inside {
-                        sh 'dockle -f json -o /reports/dockle_report.json ./target/VulnerableApp.jar'
-                    }
-                }
-            }
-        }
-
-        stage('Dynamic Application Security Testing (DAST)') {
-            steps {
-                script {
-                    docker.image('owasp/zap2docker-stable:latest').inside {
-                        sh 'zap-baseline.py -t http://localhost:8080/VulnerableApp -r /reports/zap_report.html'
-                    }
-                }
-            }
-        }
-
-        stage('Port Scanning') {
-            steps {
-                script {
-                    docker.image('nmap:latest').inside {
-                        sh 'nmap -p 8080 localhost > /reports/nmap_report.txt'
-                    }
-                }
-            }
-        }
-
-
-
-        stage('Save Reports') {
-            steps {
-                script {
-                    sh 'mkdir -p reports'
-                    sh 'mv /reports/* ./reports/'
-                }
-            }
-        }
+  agent any
+  
+  options {
+    // Enable timestamps for the console output
+    timestamps()
+  }
+  
+  stages {
+    stage('Checkout') {
+      steps {
+        // Checkout the source code from the GitHub repository
+        checkout([$class: 'GitSCM',
+                  branches: [[name: '*/master']],
+                  userRemoteConfigs: [[
+                    credentialsId: 'github-credentials',
+                    url: 'git@github.com:aqilshaikh/VulnerableApp.git'
+                  ]]])
+      }
     }
+    
+    stage('Build and Deploy') {
+      steps {
+        // Build the Java application using Maven
+        sh 'mvn clean install'
+        
+        // Deploy the Java application to Tomcat
+        sh 'cp target/VulnerableApp.war /path/to/tomcat/webapps/'
+        
+        // Restart Tomcat
+        sh 'sudo systemctl restart tomcat'
+      }
+    }
+    
+    stage('Security Scans') {
+      steps {
+        // Run OWASP Dependency-Check in a Docker container
+        sh 'docker run --rm -v ${WORKSPACE}:/workspace -w /workspace owasp/dependency-check:6.4.2 --scan /workspace/target --format XML -o /workspace/dependency-check-report.xml'
+        
+        // Run TruffleHog in a Docker container
+        sh 'docker run --rm -v ${WORKSPACE}:/workspace zricethezav/trufflehog --json /workspace > /workspace/trufflehog-report.json'
+        
+        // Run SpotBugs in a Docker container
+        sh 'docker run --rm -v ${WORKSPACE}:/workspace -w /workspace spotbugs/spotbugs:4.5.3 -xml:withMessages -output /workspace/spotbugs-report.xml target/VulnerableApp.war'
+        
+        // Run Dockle in a Docker container
+        sh 'docker run --rm -v ${WORKSPACE}:/workspace goodwithtech/dockle:0.5.0 -f json -o /workspace/dockle-report.json /workspace/target/VulnerableApp.war'
+        
+        // Run ZAP Proxy in a Docker container
+        sh 'docker run --rm -v ${WORKSPACE}:/zap/wrk -t owasp/zap2docker-stable zap-baseline.py -r zap-report.html -t http://localhost:8080/VulnerableApp'
+        
+        // Run Nmap for port scanning
+        sh 'nmap -p 8080 localhost > nmap-report.txt'
+      }
+      
+      post {
+        always {
+          // Archive the security scan reports
+          archiveArtifacts artifacts: 'dependency-check-report.xml, trufflehog-report.json, spotbugs-report.xml, dockle-report.json, zap-report.html, nmap-report.txt', allowEmptyArchive: true
+        }
+      }
+    }
+  }
+  
+  // Define the GitHub credentials for checking out the repository
+  environment {
+    GITHUB_CREDENTIALS = credentials('github-credentials')
+  }
 }
