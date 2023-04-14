@@ -71,7 +71,3 @@ pipeline {
 
 
 
-
-{
-  "exec-opts": ["native.cgroupdriver=cgroupfs"]
-}
