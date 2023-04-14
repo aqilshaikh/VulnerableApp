@@ -1,0 +1,95 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'git@github.com:aqilshaikh/VulnerableApp.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+
+        stage('Dependency Check') {
+            steps {
+                script {
+                    docker.image('owasp/dependency-check:6.2').inside {
+                        sh 'dependency-check.sh --project "Vulnerable App" --scan ./target --out /reports --format ALL'
+                    }
+                }
+            }
+        }
+
+        stage('Trufflehog') {
+            steps {
+                script {
+                    docker.image('zricethezav/trufflehog:latest').inside {
+                        sh 'trufflehog --entropy=True /workspace --json > /reports/trufflehog_report.json'
+                    }
+                }
+            }
+        }
+
+        stage('Static Application Security Testing (SAST)') {
+            steps {
+                script {
+                    docker.image('spotbugs/spotbugs:latest').inside {
+                        sh 'spotbugs -textui -effort:max -html -output /reports/spotbugs_report.html ./target/VulnerableApp.jar'
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Tomcat') {
+            steps {
+                sh 'rm -rf $CATALINA_HOME/webapps/VulnerableApp*'
+                sh 'cp ./target/VulnerableApp.war $CATALINA_HOME/webapps/'
+            }
+        }
+        
+        stage('Container Scanning') {
+            steps {
+                script {
+                    docker.image('goodwithtech/dockle:latest').inside {
+                        sh 'dockle -f json -o /reports/dockle_report.json ./target/VulnerableApp.jar'
+                    }
+                }
+            }
+        }
+
+        stage('Dynamic Application Security Testing (DAST)') {
+            steps {
+                script {
+                    docker.image('owasp/zap2docker-stable:latest').inside {
+                        sh 'zap-baseline.py -t http://localhost:8080/VulnerableApp -r /reports/zap_report.html'
+                    }
+                }
+            }
+        }
+
+        stage('Port Scanning') {
+            steps {
+                script {
+                    docker.image('nmap:latest').inside {
+                        sh 'nmap -p 8080 localhost > /reports/nmap_report.txt'
+                    }
+                }
+            }
+        }
+
+
+
+        stage('Save Reports') {
+            steps {
+                script {
+                    sh 'mkdir -p reports'
+                    sh 'mv /reports/* ./reports/'
+                }
+            }
+        }
+    }
+}
