@@ -69,5 +69,17 @@ pipeline {
   }
 }
 
+        stage('Deploy') {
+            steps {
+                // Copy the built WAR file to the remote Tomcat server
+                sh 'scp target/my-app.war <username>@<windows-machine-ip>:/path/to/tomcat/webapps/'
+            }
+        }
+        stage('Restart Tomcat') {
+            steps {
+                // Restart the remote Tomcat server
+                sh 'ssh <username>@<windows-machine-ip> "net stop Tomcat8 && net start Tomcat8"'
+            }
+        }
 
 
