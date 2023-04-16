@@ -83,3 +83,9 @@ pipeline {
         }
 
 
+  stage('Deploy') {
+            steps {
+                // Copy the built WAR file to the remote Tomcat server using the private key for authentication
+                sh 'scp -i /path/to/private/key -o StrictHostKeyChecking=no target/my-app.war <username>@<windows-machine-ip>:/path/to/tomcat/webapps/'
+            }
+        }
