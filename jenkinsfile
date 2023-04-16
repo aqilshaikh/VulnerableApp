@@ -81,6 +81,15 @@ pipeline {
                 sh 'ssh <username>@<windows-machine-ip> "net stop Tomcat8 && net start Tomcat8"'
             }
         }
+stage('SAST') {
+    steps {
+        withCredentials([usernamePassword(credentialsId: 'sonarqube-credentials', usernameVariable: 'SONARQUBE_USERNAME', passwordVariable: 'SONARQUBE_PASSWORD')]) {
+            withSonarQubeEnv('sonar') {
+                sh "mvn sonar:sonar -Dsonar.login=${env.SONARQUBE_USERNAME} -Dsonar.password=${env.SONARQUBE_PASSWORD}"
+            }
+        }
+    }
+}
 
 
   stage('Deploy') {
