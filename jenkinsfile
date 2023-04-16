@@ -89,3 +89,10 @@ pipeline {
                 sh 'scp -i /path/to/private/key -o StrictHostKeyChecking=no target/my-app.war <username>@<windows-machine-ip>:/path/to/tomcat/webapps/'
             }
         }
+        
+        docker run --rm -v target/:/usr/src --link sonarqube sonarqube /usr/src mvn sonar:sonar -Dsonar.host.url=http://localhost:9000 -Dsonar.login=admin -Dsonar.password=capstone
+docker run --rm -v target/:/usr/src --link sonarqube sonarqube mvn sonar:sonar \
+  -Dsonar.host.url=http://localhost:9000 \
+  -Dsonar.login=admin \
+  -Dsonar.password=capstone
+
